@@ -17,13 +17,16 @@
  *
  * - The ECMA-6 specs has to be followed 100%
  *
+ * - ECMA-6 specs are still changing, so we need to keep this file up-to-date with
+ *   the specs all the time
  */
 
 (function(global) {
 
     'use strict';
 
-    var $$iterator, ArrayIteratorPrototype;
+    var $iterator$, ArrayIteratorPrototype,
+        Symbol = global.Symbol || {};
 
     // don't trample native promises if they exist
     if ('Promise' in global && typeof global.Promise.all === 'function') {
@@ -62,12 +65,12 @@
     }
 
     // 6.1.5.1 Well-Known Symbols (iterator key)
-    $$iterator = typeof Symbol !== 'undefined' && Symbol.iterator ||
+    $iterator$ = typeof Symbol !== 'undefined' && Symbol.iterator ||
         '_shim_iterator_';
 
     // 7.1.4 ToInteger
-    function ToInteger(argument) {
-        var number = +argument;
+    function ToInteger(value) {
+        var number = +value;
         if (number !== number) {
             return 0;
         }
@@ -78,22 +81,23 @@
     }
 
     // 7.1.12 ToString
-    function ToString(argument) {
-        return typeof argument === 'string' ? argument : String(argument);
+    function ToString(value) {
+        return typeof value === 'string' ? value : String(value);
     }
 
     // 7.1.13 ToObject
-    function ToObject(argument) {
+    function ToObject(x, optMessage) {
+      /* jshint eqnull:true */  
         if (argument == null) {
-            throw TypeError();
+           throw new TypeError(optMessage || 'Cannot call method on ' + x);
         }
-        switch (typeof argument) {
+        switch (typeof x) {
             case 'boolean':
             case 'number':
             case 'string':
-                return Object(argument);
+                return Object(x);
             default:
-                return argument;
+                return x;
         }
     }
 
@@ -104,12 +108,18 @@
     }
 
     // 7.2.2 IsCallable
-    function IsCallable(argument) {
-        return typeof argument === 'function';
+    function IsCallable(x) {
+        return typeof x === 'function'
+        &&
+        // some versions of IE say that typeof /abc/ === 'function'
+        Object.prototype.toString.x === '[object Function]';
+        
     }
 
     // 7.2.3 SameValue( x, y )
     function SameValue(x, y) {
+
+
         if (typeof x !== typeof y) {
             return false;
         }
@@ -137,17 +147,25 @@
     // 7.4.1 GetIterator ( obj )
     // not a real shim, but it works
     function GetIterator(obj) {
+
         if (Type(obj) !== 'object') {
             throw TypeError();
         }
-        return obj[$$iterator]();
+        
+        var itFn = obj[$iterator$];
+         
+         if(!IsCallable(itFn)) {
+            throw new TypeError('value is not an iterable');
+         }
+        
+        return itFn();
     }
 
     // 7.4.2 IteratorNext ( iterator, value )
     function IteratorNext(iterator, value) {
         var result = iterator.next(value);
         if (Type(result) !== 'object') {
-            throw TypeError();
+            throw TypeError('bad iterator');
         }
         return result;
     }
@@ -155,7 +173,7 @@
     // 7.4.3 IteratorComplete ( iterResult )
     function IteratorComplete(iterResult) {
         if (Type(iterResult) !== 'object') {
-            throw TypeError();
+            throw TypeError('bad iterator');
         }
         return Boolean(iterResult.done);
     }
@@ -163,7 +181,7 @@
     // 7.4.4 IteratorValue ( iterResult )
     function IteratorValue(iterResult) {
         if (Type(iterResult) !== 'object') {
-            throw TypeError();
+            throw TypeError('bad result');
         }
         return iterResult.value;
     }
@@ -210,13 +228,14 @@
     }
 
     // 22.1.3.29 Array.prototype.values ( )
+    // Note! Chrome 38 defines Array#keys and Array#entries, and Array#@@iterator, but not Array#values
     Array.prototype.values = function() {
         var O = ToObject(this);
         return CreateArrayIterator(O, 'value');
     };
 
     // 22.1.3.30 Array.prototype [ @@iterator ] ( )
-    Array.prototype[$$iterator] = Array.prototype.values;
+    Array.prototype[$iterator$] = Array.prototype.values;
 
     // 22.1.5.2 The %ArrayIteratorPrototype% Object
     ArrayIteratorPrototype = {};
@@ -259,7 +278,7 @@
     };
 
     // 22.1.5.2.2 %ArrayIteratorPrototype% [ @@iterator ] ( )
-    ArrayIteratorPrototype[$$iterator] = function() {
+    ArrayIteratorPrototype[$iterator$] = function() {
         return this;
     };
 
@@ -388,6 +407,11 @@
         if (Type(x) !== 'object') {
             return false;
         }
+        
+        if(!x['[[PromiseConstructor]]']) {
+             return false;
+        }
+        
         if (Type(x['[[PromiseStatus]]']) === 'undefined') {
             return false;
         }
@@ -395,33 +419,35 @@
     }
 
     // 25.4.1.7 TriggerPromiseReactions ( reactions, argument )
-    function TriggerPromiseReactions(reactions, argument) {
+    function TriggerPromiseReactions(reactions, x) {
         reactions.forEach(function(reaction) {
-            EnqueueTask(PromiseReactionTask, [reaction, argument]);
+            EnqueueTask(PromiseReactionTask, [reaction, x]);
         });
     }
 
     // 25.4.1.8 UpdatePromiseFromPotentialThenable ( x, promiseCapability )
-    function UpdatePromiseFromPotentialThenable(x, promiseCapability) {
+    function UpdatePromiseFromPotentialThenable(x, capability) {
         var then, rejectResult, thenCallResult;
         if (Type(x) !== 'object') {
             return 'not a thenable';
         }
+        
+        var resolve = capability['[[Resolve]]'],
+        reject = capability['[[Reject]]'];
+        
         try {
-            then = x.then;
+            then = x.then; // only one invocation of accessor
         } catch (e) {
-            rejectResult = promiseCapability['[[Reject]]'].call(undefined, e);
+            rejectResult = reject.call(undefined, e);
             return null;
         }
         if (!IsCallable(then)) {
             return 'not a thenable';
         }
         try {
-            thenCallResult = then.call(x, promiseCapability['[[Resolve]]'],
-                promiseCapability['[[Reject]]']
-            );
+            thenCallResult = then.call(x, resolve, reject);
         } catch (e) {
-            rejectResult = promiseCapability['[[Reject]]'].call(undefined, e);
+            rejectResult = reject.call(undefined, e);
             return null;
         }
         return null;
@@ -496,14 +522,11 @@
     // 25.4.4.1 Promise.all ( iterable )
     Promise.all = function(iterable) {
         var C = this,
-            promiseCapability, iterator, values,
+            promiseCapability = NewPromiseCapability(C), 
+            iterator, values,
             remainingElementsCount, index, next, resolveResult,
             nextValue, nextPromise, resolveElement, result;
-        try {
-            promiseCapability = NewPromiseCapability(C);
-        } catch (e) {
-            return e;
-        }
+
         try {
             iterator = GetIterator(iterable);
         } catch (e) {
@@ -594,10 +617,7 @@
         }
         try {
             promiseCapability = NewPromiseCapability(C);
-        } catch (e) {
-            return e;
-        }
-        try {
+
             resolveResult = promiseCapability['[[Resolve]]'].call(undefined, x);
         } catch (e) {
             return e;
@@ -608,44 +628,35 @@
     // 25.4.4.4 Promise.race ( iterable )
     Promise.race = function(iterable) {
         var C = this,
-            promiseCapability, iterator, nextValue, nextPromise, next;
-        try {
-            promiseCapability = NewPromiseCapability(C);
-        } catch (e) {
-            return e;
-        }
+            promiseCapability = NewPromiseCapability(C), 
+            iterator, nextValue, nextPromise, next;
+
         try {
             iterator = GetIterator(iterable);
         } catch (e) {
             return IfAbruptRejectPromise(e, promiseCapability);
         }
+        try {
         while (true) {
-            try {
+
                 next = IteratorStep(iterator);
-            } catch (e) {
-                return IfAbruptRejectPromise(e, promiseCapability);
-            }
+
             if (next === false) {
                 return promiseCapability['[[Promise]]'];
             }
-            try {
+
                 nextValue = IteratorValue(next);
-            } catch (e) {
-                return IfAbruptRejectPromise(e, promiseCapability);
-            }
-            try {
+
                 nextPromise = C.cast(nextValue);
-            } catch (e) {
-                return IfAbruptRejectPromise(e, promiseCapability);
-            }
-            try {
+
                 nextPromise.then(promiseCapability['[[Resolve]]'],
                     promiseCapability['[[Reject]]']
                 );
-            } catch (e) {
+        }
+        } catch (e) {
                 return IfAbruptRejectPromise(e, promiseCapability);
             }
-        }
+
     };
 
     // 25.4.4.5 Promise.reject ( r )
