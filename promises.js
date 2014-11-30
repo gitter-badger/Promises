@@ -15,11 +15,6 @@
     var $iterator$, ArrayIteratorPrototype,
         Symbol = global.Symbol || {};
 
-    // don't trample native promises if they exist
-    if ('Promise' in global && typeof global.Promise.all === 'function') {
-        return;
-    }
-
     // set a value as non-configurable and non-enumerable
     function defineInternal(obj, key, val) {
         Object.defineProperty(obj, key, {
@@ -102,8 +97,8 @@
     // http://people.mozilla.org/~jorendorff/es6-draft.html#sec-iscallable
 
     function IsCallable(x) {
-        return typeof x === 'function' && // some versions of IE say that typeof /abc/ === 'function'
-            Object.prototype.tostring.call(x) === '[object Function]';
+        return typeof x === 'function' //&& // some versions of IE say that typeof /abc/ === 'function'
+            //            Object.prototype.tostring.call(x) === '[object Function]';
     }
 
     // 7.2.3 SameValue( a, b )
@@ -231,7 +226,7 @@
             a, index, itemKind, lenValue, len,
             elementKey, elementValue, result;
         if (isType(O) !== 'object') {
-            throw new TypeError();
+            throw new TypeError('not a object');
         }
         a = O['[[IteratedObject]]'];
         if (isType(a) === 'undefined') {
@@ -257,7 +252,7 @@
             return CreateIterResultObject(index, false);
         }
         if (itemKind.indexOf('value') === -1) {
-            throw new TypeError();
+            throw new TypeError('not found');
         }
         return CreateIterResultObject(elementValue, false);
 
@@ -292,7 +287,7 @@
             var promise = F['[[Promise]]'],
                 reactions;
             if (isType(promise) !== 'object') {
-                throw new TypeError();
+                throw new TypeError('not a object');
             }
             if (promise['[[PromiseStatus]]'] !== 'unresolved') {
                 return undefined;
@@ -319,7 +314,7 @@
             var promise = F['[[Promise]]'],
                 reactions;
             if (isType(promise) !== 'object') {
-                throw new TypeError();
+                throw new TypeError('not a object');
             }
             if (promise['[[PromiseStatus]]'] !== 'unresolved') {
                 return undefined;
@@ -333,11 +328,18 @@
         };
     }
 
-    // 25.4.1.5 NewPromiseCapability ( C )
-    function NewPromiseCapability(C) {
+    // 25.4.1.5 PromiseCapability  (C)
+    // 'PromiseCapability' in the spec is what most promise implementations
+    // call a "deferred".
+    function PromiseCapability(C) {
+
+        if (!IsCallable(C)) {
+            throw new TypeError('bad promise constructor');
+        }
         var promise;
+
         if (!IsConstructor(C)) {
-            throw new TypeError();
+            throw new TypeError('bad promise constructor');
         }
         try {
             promise = Object.create(C.prototype);
@@ -349,58 +351,60 @@
 
     // 25.4.1.5.1 CreatePromiseCapabilityRecord( promise, constructor )
     function CreatePromiseCapabilityRecord(promise, constructor) {
-        var promiseCapability = {},
+        var capability = {},
             executor, constructorResult;
-        defineInternal(promiseCapability, '[[Promise]]', promise);
-        defineInternal(promiseCapability, '[[Resolve]]', undefined);
-        defineInternal(promiseCapability, '[[Reject]]', undefined);
+        defineInternal(capability, '[[Promise]]', promise);
+        defineInternal(capability, '[[Resolve]]', undefined);
+        defineInternal(capability, '[[Reject]]', undefined);
         executor = new GetCapabilitiesExecutor();
-        defineInternal(executor, '[[Capability]]', promiseCapability);
+        defineInternal(executor, '[[Capability]]', capability);
+
         try {
             constructorResult = constructor.call(promise, executor);
         } catch (e) {
             return e;
         }
-        if (!IsCallable(promiseCapability['[[Resolve]]'])) {
-            throw new TypeError();
+
+        if (!IsCallable(capability['[[Resolve]]'])) {
+            throw new TypeError('not a valid resolver');
         }
-        if (!IsCallable(promiseCapability['[[Reject]]'])) {
-            throw new TypeError();
+        if (!IsCallable(capability['[[Reject]]'])) {
+            throw new TypeError('not a valid rejection');
         }
         if (typeof constructorResult === 'object' &&
             !SameValue(promise, constructorResult)) {
-            throw new TypeError();
+            throw new TypeError('not a valid object');
         }
-        return promiseCapability;
+        return capability;
     }
 
     // 25.4.1.5.2 GetCapabilitiesExecutor Functions
     function GetCapabilitiesExecutor() {
         return function F(resolve, reject) {
-            var promiseCapability = F['[[Capability]]'];
-            if (isType(promiseCapability['[[Resolve]]']) !== 'undefined') {
-                throw new TypeError();
+            var capability = F['[[Capability]]'];
+            if (isType(capability['[[Resolve]]']) !== 'undefined') {
+                throw new TypeError('Invalid resolver');
             }
-            if (isType(promiseCapability['[[Reject]]']) !== 'undefined') {
-                throw new TypeError();
+            if (isType(capability['[[Reject]]']) !== 'undefined') {
+                throw new TypeError('Invalid rejection');
             }
-            defineInternal(promiseCapability, '[[Resolve]]', resolve);
-            defineInternal(promiseCapability, '[[Reject]]', reject);
+            defineInternal(capability, '[[Resolve]]', resolve);
+            defineInternal(capability, '[[Reject]]', reject);
         };
     }
 
-    // 25.4.1.6 IsPromise ( x )
-    function IsPromise(x) {
-        if (isType(x) !== 'object') {
+    // 25.4.1.6 IsPromise ( promise )
+    function IsPromise(promise) {
+        if (isType(promise) !== 'object') {
             return false;
         }
 
-        if (!x['[[PromiseConstructor]]']) {
+        if (!promise['[[PromiseConstructor]]']) {
             return false;
         }
 
-        if (isType(x['[[PromiseStatus]]']) === 'undefined') {
-            return false;
+        if (isType(promise['[[PromiseStatus]]']) === 'undefined') {
+            return false; // uninitialized
         }
         return true;
     }
@@ -412,15 +416,16 @@
         });
     }
 
-    // 25.4.1.8 UpdatePromiseFromPotentialThenable ( x, promiseCapability )
+    // 25.4.1.8 UpdatePromiseFromPotentialThenable ( x, capability )
     function UpdatePromiseFromPotentialThenable(x, capability) {
-        var then, rejectResult, thenCallResult;
+        
         if (isType(x) !== 'object') {
             return 'not a thenable';
         }
 
-        var resolve = capability['[[Resolve]]'],
-            reject = capability['[[Reject]]'];
+       var then, rejectResult, thenCallResult,
+           resolve = capability['[[Resolve]]'],
+           reject = capability['[[Reject]]'];
 
         try {
             then = x.then; // only one invocation of accessor
@@ -442,24 +447,24 @@
 
     // 25.4.2.1 PromiseReactionTask( reaction, argument )
     function PromiseReactionTask(reaction, argument) {
-        var promiseCapability = reaction['[[Capabilities]]'],
+        var capability = reaction['[[Capabilities]]'],
             handler = reaction['[[Handler]]'],
             handlerResult, selfResolutionError, updateResult;
         try {
             handlerResult = handler.call(undefined, argument);
         } catch (e) {
-            return promiseCapability['[[Reject]]'].call(undefined, e);
+            return capability['[[Reject]]'].call(undefined, e);
         }
-        if (SameValue(handlerResult, promiseCapability['[[Promise]]'])) {
-            selfResolutionError = new TypeError();
-            return promiseCapability['[[Reject]]']
+        if (SameValue(handlerResult, capability['[[Promise]]'])) {
+            selfResolutionError = new TypeError('Invalid promise');
+            return capability['[[Reject]]']
                 .call(undefined, selfResolutionError);
         }
         updateResult = UpdatePromiseFromPotentialThenable(handlerResult,
-            promiseCapability
+            capability
         );
         if (updateResult === 'not a thenable') {
-            return promiseCapability['[[Resolve]]'].call(undefined, handlerResult);
+            return capability['[[Resolve]]'].call(undefined, handlerResult);
         }
         return undefined;
     }
@@ -474,7 +479,7 @@
             throw new TypeError('Invalid promise');
         }
         if (isType(promise['[[PromiseStatus]]']) !== 'undefined') {
-            throw new TypeError();
+            throw new TypeError('Invalid status');
         }
         defineInternal(this, '[[PromiseConstructor]]', Promise);
         return InitializePromise(promise, executor);
@@ -484,10 +489,11 @@
     function InitializePromise(promise, executor) {
         var resolve, reject, completion, status;
         if (isType(promise['[[PromiseStatus]]']) !== 'undefined') {
-            throw new TypeError();
+            throw new TypeError('Invalid status');
         }
         if (!IsCallable(executor)) {
-            throw new TypeError();
+            throw new TypeError('Invalid executor');
+
         }
         defineInternal(promise, '[[PromiseStatus]]', 'unresolved');
         defineInternal(promise, '[[PromiseResolveReactions]]', []);
@@ -510,7 +516,7 @@
     // 25.4.4.1 Promise.all ( iterable )
     Promise.all = function(iterable) {
         var C = this,
-            promiseCapability = NewPromiseCapability(C),
+            capability = PromiseCapability(C),
             iterator, values,
             remainingElementsCount, index, next, resolveResult,
             nextValue, nextPromise, resolveElement, result;
@@ -518,57 +524,49 @@
         try {
             iterator = GetIterator(iterable);
         } catch (e) {
-            return IfAbruptRejectPromise(e, promiseCapability);
+            return IfAbruptRejectPromise(e, capability);
         }
         values = [];
         remainingElementsCount = {
             '[[value]]': 0
         };
         index = 0;
-        while (true) {
-            try {
+        try {
+            while (true) {
+
                 next = IteratorStep(iterator);
-            } catch (e) {
-                return IfAbruptRejectPromise(e, promiseCapability);
-            }
-            if (next === false) {
-                if (index === 0) {
-                    try {
-                        resolveResult = promiseCapability['[[Resolve]]']
+                if (next === false) {
+                    if (index === 0) {
+                        resolveResult = capability['[[Resolve]]']
                             .call(undefined, values);
-                    } catch (e) {
-                        return e;
                     }
+                    return capability['[[Promise]]'];
                 }
-                return promiseCapability['[[Promise]]'];
-            }
-            try {
+
                 nextValue = IteratorValue(next);
-            } catch (e) {
-                return IfAbruptRejectPromise(e, promiseCapability);
-            }
-            try {
+
+
                 nextPromise = C.cast(nextValue);
-            } catch (e) {
-                return IfAbruptRejectPromise(e, promiseCapability);
-            }
-            resolveElement = new PromiseAllResolveElementFunction();
-            defineInternal(resolveElement, '[[Index]]', index);
-            defineInternal(resolveElement, '[[Values]]', values);
-            defineInternal(resolveElement, '[[Capabilities]]', promiseCapability);
-            defineInternal(resolveElement, '[[RemainingElements]]',
-                remainingElementsCount
-            );
-            try {
-                result = nextPromise.then(resolveElement,
-                    promiseCapability['[[Reject]]']
+
+                resolveElement = new PromiseAllResolveElementFunction();
+                defineInternal(resolveElement, '[[Index]]', index);
+                defineInternal(resolveElement, '[[Values]]', values);
+                defineInternal(resolveElement, '[[Capabilities]]', capability);
+                defineInternal(resolveElement, '[[RemainingElements]]',
+                    remainingElementsCount
                 );
-            } catch (e) {
-                return IfAbruptRejectPromise(e, promiseCapability);
+
+                result = nextPromise.then(resolveElement,
+                    capability['[[Reject]]']
+                );
+
+                index++;
+                remainingElementsCount['[[value]]'] ++;
             }
-            index++;
-            remainingElementsCount['[[value]]'] ++;
+        } catch (e) {
+            return IfAbruptRejectPromise(e, capability);
         }
+
     };
 
     // 25.4.4.1.1 Promise.all Resolve Element Functions
@@ -576,16 +574,16 @@
         return function F(x) {
             var index = F['[[Index]]'],
                 values = F['[[Values]]'],
-                promiseCapability = F['[[Capabilities]]'],
+                capability = F['[[Capabilities]]'],
                 remainingElementsCount = F['[[RemainingElements]]'];
             try {
                 values[index] = x;
             } catch (e) {
-                return IfAbruptRejectPromise(e, promiseCapability);
+                return IfAbruptRejectPromise(e, capability);
             }
             remainingElementsCount['[[value]]'] --;
             if (remainingElementsCount['[[value]]'] === 0) {
-                promiseCapability['[[Resolve]]'].call(undefined, values);
+                capability['[[Resolve]]'].call(undefined, values);
             }
             return undefined;
         };
@@ -594,7 +592,7 @@
     // 25.4.4.2 Promise.cast ( x )
     Promise.cast = function(x) {
         var C = this,
-            capability = NewPromiseCapability(C),
+            capability = PromiseCapability(C),
             resolveResult,
             constructor;
         if (IsPromise(x)) {
@@ -612,7 +610,7 @@
     // 25.4.4.4 Promise.race ( iterable )
     Promise.race = function(iterable) {
         var C = this,
-            capability = NewPromiseCapability(C),
+            capability = PromiseCapability(C),
             iterator, nextValue, nextPromise, next;
 
         try {
@@ -646,7 +644,7 @@
     // 25.4.4.5 Promise.reject ( r )
     Promise.reject = function(r) {
         var C = this,
-            capability = NewPromiseCapability(C);
+            capability = PromiseCapability(C);
 
         capability['[[Reject]]'].call(undefined, r);
 
@@ -656,7 +654,7 @@
     // 25.4.4.6 Promise.resolve ( v )
     Promise.resolve = function(v) {
         var C = this,
-            capability = NewPromiseCapability(C);
+            capability = PromiseCapability(C);
 
         capability['[[Resolve]]'].call(undefined, v); // call with this===undefined
 
@@ -676,7 +674,7 @@
         }
 
         var C = promise.constructor,
-            capability = NewPromiseCapability(C),
+            capability = PromiseCapability(C),
             rejectionHandler, fulfillmentHandler,
             resolutionHandler, resolveReaction, rejectReaction, resolution;
 
@@ -734,26 +732,26 @@
             var promise = F['[[Promise]]'],
                 fulfillmentHandler = F['[[FulfillmentHandler]]'],
                 rejectionHandler = F['[[RejectionHandler]]'],
-                selfResolutionError, C, promiseCapability, updateResult;
+                selfResolutionError, C, 
+                capability = PromiseCapability(C), 
+                updateResult;
+       
             if (SameValue(x, promise)) {
-                selfResolutionError = TypeError();
+                selfResolutionError = TypeError('Invalid promise');
                 return rejectionHandler.call(undefined, selfResolutionError);
             }
+       
             C = promise['[[PromiseConstructor]]'];
-            try {
-                promiseCapability = NewPromiseCapability(C);
-            } catch (e) {
-                return e;
-            }
+       
             try {
                 updateResult = UpdatePromiseFromPotentialThenable(x,
-                    promiseCapability
+                    capability
                 );
             } catch (e) {
                 return e;
             }
             if (updateResult !== 'not a thenable') {
-                return promiseCapability['[[Promise]]'].then(fulfillmentHandler,
+                return capability['[[Promise]]'].then(fulfillmentHandler,
                     rejectionHandler
                 );
             }
