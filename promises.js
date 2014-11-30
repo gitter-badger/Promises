@@ -1,21 +1,6 @@
 /** ECMA-6 Promises polyfill
  *
- * Note!
- *
- * For better performance I advice you to use the
- * setimmediate.js polyfill. If not, ECMA-6 Promises will fall back
- * to a normal 'setTimeout' and things goes slow!
- *
- *
- * IMPORTANT:
- * =========
- *
- * - all functions and variable names has to be true to
- *   the ECMA-6 specs. Meaning if ES6 says a function name should be
- *   isThenable(), then that is the name. Then you can't
- *   use e.g. isPromiseLike() as the function name.
- *
- * - The ECMA-6 specs has to be followed 100%
+ * http://people.mozilla.org/~jorendorff/es6-draft.html
  *
  * TODO:
  * ======
@@ -23,6 +8,7 @@
  * jsHint are complaining as a PIG!!  Fix it!!
  *
  */
+ 
 (function(global) {
 
     'use strict';
@@ -44,8 +30,6 @@
             value: val
         });
     }
-
-    // From the ES6 spec (http://people.mozilla.org/~jorendorff/es6-draft.html)
 
     // 6 ECMAScript Data Types and Values
     function isType(x) {
@@ -81,6 +65,20 @@
         $iterator$ = '@@iterator';
     }
 
+    // 7.1.12 ToString
+    function ToString(str) {
+        return typeof str === 'string' ? str : String(str);
+    }
+
+    // 7.1.13 ToObject
+    function ToObject(x, optMessage) {
+        /* jshint eqnull:true */
+        if (x === null || x === undefined) {
+            throw TypeError(optMessage || 'Cannot call method on ' + x);
+        }
+        return Object(x);
+    }
+
     // 7.1.4 ToInteger
     function ToInteger(value) {
         var number = +value;
@@ -93,20 +91,6 @@
         return (number >= 0 ? 1 : -1) * Math.floor(Math.abs(number));
     }
 
-    // 7.1.12 ToString
-    function ToString(argument) {
-        return typeof argument === 'string' ? argument : String(argument);
-    }
-
-    // 7.1.13 ToObject
-    function ToObject(x, optMessage) {
-        /* jshint eqnull:true */
-        if (x === null || x === undefined) {
-            throw TypeError(optMessage || 'Cannot call method on ' + x);
-        }
-        return Object(x);
-    }
-
     // 7.1.15 ToLength
     function ToLength(v) {
         var len = ToInteger(v);
@@ -117,28 +101,34 @@
     }
 
     // 7.2.2 IsCallable
-    function IsCallable(argument) {
-        return typeof argument === 'function';
+    // http://people.mozilla.org/~jorendorff/es6-draft.html#sec-iscallable
+    
+    function IsCallable(x) {
+        return typeof x === 'function' &&  // some versions of IE say that typeof /abc/ === 'function'
+         Object.prototype.tostring.call(x) === '[object Function]';
     }
 
-    // 7.2.3 SameValue( x, y )
-    function SameValue(x, y) {
-        if (typeof x !== typeof y) {
+    // 7.2.3 SameValue( a, b )
+    function SameValue(a, b) {
+
+        if (typeof a !== typeof b) {
             return false;
         }
-        if (isType(x) === 'undefined') {
+        if (isType(a) === 'undefined') {
             return true;
         }
-        if (isType(x) === 'number') {
-            if (x !== x && y !== y) {
+        if (isType(a) === 'number') {
+            if (a !== a && b !== b) {
                 return true;
             }
-            if (x === 0) {
-                return 1 / x === 1 / y;
+             // 0 === -0, but they are not identical.
+            if (a === 0) {
+                return 1 / a === 1 / b;
             }
         }
-        return x === y;
+        return a === b;
     }
+    
 
     // 7.2.5 IsConstructor
     // this is an ES6 abstract operation, and it's not really
@@ -148,10 +138,10 @@
     }
 
     // 7.4.1 GetIterator ( obj )
-    // not a real shim, but it works
+    // http://people.mozilla.org/~jorendorff/es6-draft.html#sec-getiterator
     function GetIterator(obj) {
         if (isType(obj) !== 'object') {
-            throw new TypeError();
+            throw new TypeError('not a object');
         }
         return obj[$iterator$]();
     }
@@ -160,7 +150,7 @@
     function IteratorNext(iterator, value) {
         var result = iterator.next(value);
         if (isType(result) !== 'object') {
-            throw new TypeError();
+            throw new TypeError('not a object');
         }
         return result;
     }
@@ -168,7 +158,7 @@
     // 7.4.3 IteratorComplete ( iterResult )
     function IteratorComplete(iterResult) {
         if (isType(iterResult) !== 'object') {
-            throw new TypeError();
+            throw new TypeError('not a object');
         }
         return Boolean(iterResult.done);
     }
@@ -176,7 +166,7 @@
     // 7.4.4 IteratorValue ( iterResult )
     function IteratorValue(iterResult) {
         if (isType(iterResult) !== 'object') {
-            throw new TypeError();
+            throw new TypeError('not a object');
         }
         return iterResult.value;
     }
@@ -190,7 +180,7 @@
     // 7.4.6 CreateIterResultObject ( value, done )
     function CreateIterResultObject(value, done) {
         if (isType(done) !== 'boolean') {
-            throw new TypeError();
+            throw new TypeError('not a boolean value');
         }
         return {
             value: value,
@@ -199,8 +189,11 @@
     }
 
     // 8.4.1 EnqueueTask ( queueName, task, arguments)
-    // not a real shim, but good enough
     function EnqueueTask(task, args) {
+
+        // Should include setImmediate.js polyfill to gain
+        // better performance
+
         if (typeof window.setImmediate === 'function') {
             window.setImmediate(function() {
                 task.apply(null, args);
@@ -269,6 +262,7 @@
             throw new TypeError();
         }
         return CreateIterResultObject(elementValue, false);
+
     };
 
     // 22.1.5.2.2 %ArrayIteratorPrototype% [ @@iterator ] ( )
