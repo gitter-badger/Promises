@@ -1,4 +1,24 @@
-// ECMA-6 Promises polyfill
+/** ECMA-6 Promises polyfill
+ *
+ * Note!
+ *
+ * For better performance I advice you to use the
+ * setimmediate.js polyfill. If not, ECMA-6 Promises will fall back
+ * to a normal 'setTimeout' and things goes slow!
+ *
+ *
+ * IMPORTANT:
+ * =========
+ *
+ * - all functions and variable names has to be true to
+ *   the ECMA-6 specs. Meaning if ES6 says a function name should be
+ *   isThenable(), then that is the name. Then you can't
+ *   use e.g. isPromiseLike() as the function name.
+ *
+ * - The ECMA-6 specs has to be followed 100%
+ *
+ */
+
 (function(global) {
 
     'use strict';
