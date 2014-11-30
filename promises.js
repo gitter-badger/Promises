@@ -124,8 +124,6 @@
 
 
     // 7.2.5 IsConstructor
-    // this is an ES6 abstract operation, and it's not really
-    // possible in JS, but this should be good enough
     function IsConstructor(obj) {
         return typeof obj === 'function';
     }
