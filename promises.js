@@ -8,7 +8,6 @@
  * jsHint are complaining as a PIG!!  Fix it!!
  *
  */
- 
 (function(global) {
 
     'use strict';
@@ -33,24 +32,23 @@
 
     // 6 ECMAScript Data Types and Values
     function isType(x) {
-
-        switch (typeof x) {
-            case 'undefined':
-            case 'boolean':
-            case 'string':
-            case 'number':
-                return typeof x;
-            default:
-                if (x === null) {
-                    return 'null';
-                }
-                /*jshint notypeof: true */
-                if (typeof Symbol === 'function' && x instanceof Symbol) {
-                    return 'symbol';
-                }
-                /*jshint notypeof: false */
-                return 'object';
+        var tof = typeof x;
+        if (tof === 'undefined' ||
+            tof === 'boolean' ||
+            tof === 'string' ||
+            tof === 'undefined' ||
+            tof === 'number') {
+            return tof;
         }
+        if (x === null) {
+            return 'null';
+        }
+        /*jshint notypeof: true */
+        if (typeof Symbol === 'function' && x instanceof Symbol) {
+            return 'symbol';
+        }
+        /*jshint notypeof: false */
+        return 'object';
     }
 
     // 6.1.5.1 Well-Known Symbols (iterator key)
@@ -102,10 +100,10 @@
 
     // 7.2.2 IsCallable
     // http://people.mozilla.org/~jorendorff/es6-draft.html#sec-iscallable
-    
+
     function IsCallable(x) {
-        return typeof x === 'function' &&  // some versions of IE say that typeof /abc/ === 'function'
-         Object.prototype.tostring.call(x) === '[object Function]';
+        return typeof x === 'function' && // some versions of IE say that typeof /abc/ === 'function'
+            Object.prototype.tostring.call(x) === '[object Function]';
     }
 
     // 7.2.3 SameValue( a, b )
@@ -121,14 +119,14 @@
             if (a !== a && b !== b) {
                 return true;
             }
-             // 0 === -0, but they are not identical.
+            // 0 === -0, but they are not identical.
             if (a === 0) {
                 return 1 / a === 1 / b;
             }
         }
         return a === b;
     }
-    
+
 
     // 7.2.5 IsConstructor
     // this is an ES6 abstract operation, and it's not really
