@@ -7,15 +7,16 @@ typeof window.setImmediate === 'function' &&
 
         'use strict';
 
-        var uid = 1, // Spec says greater than zero
+        var counter = 1, // Spec says greater than zero
             queue = {},
             currentlyRunningATask = false,
             slice = Array.prototype.slice,
+            MessageChannel   = global.MessageChannel,
             setImmediate;
 
-        function addFromSetImmediateArguments(args) {
-            queue[uid] = partiallyApplied.apply(undefined, args);
-            return uid++;
+        function defer(args) {
+            queue[counter] = partiallyApplied.apply(undefined, args);
+            return counter++;
         }
 
         // This function accepts the same arguments as setImmediate, but
@@ -32,7 +33,6 @@ typeof window.setImmediate === 'function' &&
         }
 
         function run(handle) {
-
             if (currentlyRunningATask) {
                 setTimeout(partiallyApplied(run, handle), 0);
             } else {
@@ -97,14 +97,14 @@ typeof window.setImmediate === 'function' &&
             }, false);
 
             setImmediate = function() {
-                var handle = addFromSetImmediateArguments(arguments);
+                var handle = defer(arguments);
                 global.postMessage(messagePrefix + handle, '*');
                 return handle;
             };
 
             // Web workers
 
-        } else if (global.MessageChannel) {
+        } else if (MessageChannel) {
 
             var channel = new MessageChannel();
 
@@ -114,7 +114,7 @@ typeof window.setImmediate === 'function' &&
             };
 
             setImmediate = function() {
-                var handle = addFromSetImmediateArguments(arguments);
+                var handle = defer(arguments);
                 channel.port2.postMessage(handle);
                 return handle;
             };
