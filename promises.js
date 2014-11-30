@@ -5,7 +5,6 @@
     'use strict';
 
     var
-
         isCallable = function(x) {
             return typeof x === 'function' &&
                 Object.prototype.toString.call(x) === '[object Function]';
@@ -18,20 +17,12 @@
             return obj instanceof Promise;
         },
 
-        isThenable = function(obj) {
-            return obj && isCallable(obj.then);
+        isPromiseLike = function(obj) {
+            return obj && typeof obj.then === 'function';
         },
 
         isSettled = function(promise) {
             return promise.fulfilled || promise.rejected;
-        },
-
-        identity = function(value) {
-            return value;
-        },
-
-        thrower = function(reason) {
-            throw reason;
         },
 
         call = function(callback) {
@@ -40,7 +31,7 @@
 
         dive = function(thenable, onFulfilled, onRejected) {
             function interimOnFulfilled(value) {
-                if (isThenable(value)) {
+                if (isPromiseLike(value)) {
                     toPromise(value).then(interimOnFulfilled, interimOnRejected);
                 } else {
                     onFulfilled(value);
@@ -48,7 +39,7 @@
             }
 
             function interimOnRejected(reason) {
-                if (isThenable(reason)) {
+                if (isPromiseLike(reason)) {
                     toPromise(reason).then(interimOnFulfilled, interimOnRejected);
                 } else {
                     onRejected(reason);
@@ -84,7 +75,7 @@
 
 
     Promise.resolve = function(value) {
-        if (isThenable(value)) {
+        if (isPromiseLike(value)) {
             return toPromise(value);
         }
         return new Promise(function(resolve) {
@@ -105,7 +96,7 @@
                 i = 0;
             while (i < length) {
                 value = values[i];
-                if (isThenable(value)) {
+                if (isPromiseLike(value)) {
                     dive(value, resolve, reject);
                 } else {
                     resolve(value);
@@ -125,7 +116,7 @@
             values = values.slice(0);
             while (i < length) {
                 value = values[i];
-                if (isThenable(value)) {
+                if (isPromiseLike(value)) {
                     thenables++;
                     dive(
                         value,
@@ -234,7 +225,7 @@
                             reject(error);
                             return;
                         }
-                        if (isThenable(value)) {
+                        if (isPromiseLike(value)) {
                             toPromise(value).then(resolve, reject);
                         } else {
                             resolve(value);
@@ -251,7 +242,7 @@
                             reject(error);
                             return;
                         }
-                        if (isThenable(reason)) {
+                        if (isPromiseLike(reason)) {
                             toPromise(reason).then(resolve, reject);
                         } else {
                             resolve(reason);
