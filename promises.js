@@ -17,6 +17,11 @@
  *
  * - The ECMA-6 specs has to be followed 100%
  *
+ * TODO:
+ * ======
+ *
+ * jsHint are complaining as a PIG!!  Fix it!!
+ *
  */
 (function(global) {
 
@@ -29,6 +34,7 @@
     if ('Promise' in global && typeof global.Promise.all === 'function') {
         return;
     }
+
     // set a value as non-configurable and non-enumerable
     function defineInternal(obj, key, val) {
         Object.defineProperty(obj, key, {
@@ -42,7 +48,8 @@
     // From the ES6 spec (http://people.mozilla.org/~jorendorff/es6-draft.html)
 
     // 6 ECMAScript Data Types and Values
-    function Type(x) {
+    function isType(x) {
+
         switch (typeof x) {
             case 'undefined':
             case 'boolean':
@@ -53,16 +60,26 @@
                 if (x === null) {
                     return 'null';
                 }
+                /*jshint notypeof: true */
                 if (typeof Symbol === 'function' && x instanceof Symbol) {
                     return 'symbol';
                 }
+                /*jshint notypeof: false */
                 return 'object';
         }
     }
 
     // 6.1.5.1 Well-Known Symbols (iterator key)
     $iterator$ = typeof Symbol !== 'undefined' && Symbol.iterator ||
-        '_shim_iterator_';
+        '_es6-shim iterator_';
+
+    // Firefox ships a partial implementation using the name @@iterator.
+    // https://bugzilla.mozilla.org/show_bug.cgi?id=907077#c14
+    // So use that name if we detect it.
+
+    if (global.Set && typeof new global.Set()['@@iterator'] === 'function') {
+        $iterator$ = '@@iterator';
+    }
 
     // 7.1.4 ToInteger
     function ToInteger(value) {
@@ -78,28 +95,25 @@
 
     // 7.1.12 ToString
     function ToString(argument) {
-            return typeof argument === 'string' ? argument : String(argument);
-        }
-        // 7.1.13 ToObject
+        return typeof argument === 'string' ? argument : String(argument);
+    }
+
+    // 7.1.13 ToObject
     function ToObject(x, optMessage) {
         /* jshint eqnull:true */
-        if (argument == null) {
-            throw new TypeError(optMessage || 'Cannot call method on ' + x);
+        if (x === null || x === undefined) {
+            throw TypeError(optMessage || 'Cannot call method on ' + x);
         }
-        switch (typeof argument) {
-            case 'boolean':
-            case 'number':
-            case 'string':
-                return Object(argument);
-            default:
-                return argument;
-        }
+        return Object(x);
     }
 
     // 7.1.15 ToLength
-    function ToLength(argument) {
-        var len = ToInteger(argument);
-        return len <= 0 ? 0 : Math.min(len, Math.pow(2, 53) - 1);
+    function ToLength(v) {
+        var len = ToInteger(v);
+        if (len <= 0) {
+            return 0;
+        }
+        return Math.min(len, 0x20000000000000 - 1); // 2^53-1
     }
 
     // 7.2.2 IsCallable
@@ -112,10 +126,10 @@
         if (typeof x !== typeof y) {
             return false;
         }
-        if (Type(x) === 'undefined') {
+        if (isType(x) === 'undefined') {
             return true;
         }
-        if (Type(x) === 'number') {
+        if (isType(x) === 'number') {
             if (x !== x && y !== y) {
                 return true;
             }
@@ -136,8 +150,8 @@
     // 7.4.1 GetIterator ( obj )
     // not a real shim, but it works
     function GetIterator(obj) {
-        if (Type(obj) !== 'object') {
-            throw TypeError();
+        if (isType(obj) !== 'object') {
+            throw new TypeError();
         }
         return obj[$iterator$]();
     }
@@ -145,24 +159,24 @@
     // 7.4.2 IteratorNext ( iterator, value )
     function IteratorNext(iterator, value) {
         var result = iterator.next(value);
-        if (Type(result) !== 'object') {
-            throw TypeError();
+        if (isType(result) !== 'object') {
+            throw new TypeError();
         }
         return result;
     }
 
     // 7.4.3 IteratorComplete ( iterResult )
     function IteratorComplete(iterResult) {
-        if (Type(iterResult) !== 'object') {
-            throw TypeError();
+        if (isType(iterResult) !== 'object') {
+            throw new TypeError();
         }
         return Boolean(iterResult.done);
     }
 
     // 7.4.4 IteratorValue ( iterResult )
     function IteratorValue(iterResult) {
-        if (Type(iterResult) !== 'object') {
-            throw TypeError();
+        if (isType(iterResult) !== 'object') {
+            throw new TypeError();
         }
         return iterResult.value;
     }
@@ -175,8 +189,8 @@
 
     // 7.4.6 CreateIterResultObject ( value, done )
     function CreateIterResultObject(value, done) {
-        if (Type(done) !== 'boolean') {
-            throw TypeError();
+        if (isType(done) !== 'boolean') {
+            throw new TypeError();
         }
         return {
             value: value,
@@ -225,11 +239,11 @@
         var O = this,
             a, index, itemKind, lenValue, len,
             elementKey, elementValue, result;
-        if (Type(O) !== 'object') {
-            throw TypeError();
+        if (isType(O) !== 'object') {
+            throw new TypeError();
         }
         a = O['[[IteratedObject]]'];
-        if (Type(a) === 'undefined') {
+        if (isType(a) === 'undefined') {
             return CreateIterResultObject(undefined, true);
         }
         index = O['[[ArrayIteratorNextIndex]]'];
@@ -252,7 +266,7 @@
             return CreateIterResultObject(index, false);
         }
         if (itemKind.indexOf('value') === -1) {
-            throw TypeError();
+            throw new TypeError();
         }
         return CreateIterResultObject(elementValue, false);
     };
@@ -261,6 +275,7 @@
     ArrayIteratorPrototype[$iterator$] = function() {
         return this;
     };
+
 
     // 25.4.1.1.1 IfAbruptRejectPromise (value, capability)
     function IfAbruptRejectPromise(value, capability) {
@@ -284,8 +299,8 @@
         return function F(reason) {
             var promise = F['[[Promise]]'],
                 reactions;
-            if (Type(promise) !== 'object') {
-                throw TypeError();
+            if (isType(promise) !== 'object') {
+                throw new TypeError();
             }
             if (promise['[[PromiseStatus]]'] !== 'unresolved') {
                 return undefined;
@@ -311,8 +326,8 @@
         return function F(resolution) {
             var promise = F['[[Promise]]'],
                 reactions;
-            if (Type(promise) !== 'object') {
-                throw TypeError();
+            if (isType(promise) !== 'object') {
+                throw new TypeError();
             }
             if (promise['[[PromiseStatus]]'] !== 'unresolved') {
                 return undefined;
@@ -330,7 +345,7 @@
     function NewPromiseCapability(C) {
         var promise;
         if (!IsConstructor(C)) {
-            throw TypeError();
+            throw new TypeError();
         }
         try {
             promise = Object.create(C.prototype);
@@ -355,14 +370,14 @@
             return e;
         }
         if (!IsCallable(promiseCapability['[[Resolve]]'])) {
-            throw TypeError();
+            throw new TypeError();
         }
         if (!IsCallable(promiseCapability['[[Reject]]'])) {
-            throw TypeError();
+            throw new TypeError();
         }
         if (typeof constructorResult === 'object' &&
             !SameValue(promise, constructorResult)) {
-            throw TypeError();
+            throw new TypeError();
         }
         return promiseCapability;
     }
@@ -371,11 +386,11 @@
     function GetCapabilitiesExecutor() {
         return function F(resolve, reject) {
             var promiseCapability = F['[[Capability]]'];
-            if (Type(promiseCapability['[[Resolve]]']) !== 'undefined') {
-                throw TypeError();
+            if (isType(promiseCapability['[[Resolve]]']) !== 'undefined') {
+                throw new TypeError();
             }
-            if (Type(promiseCapability['[[Reject]]']) !== 'undefined') {
-                throw TypeError();
+            if (isType(promiseCapability['[[Reject]]']) !== 'undefined') {
+                throw new TypeError();
             }
             defineInternal(promiseCapability, '[[Resolve]]', resolve);
             defineInternal(promiseCapability, '[[Reject]]', reject);
@@ -384,7 +399,7 @@
 
     // 25.4.1.6 IsPromise ( x )
     function IsPromise(x) {
-        if (Type(x) !== 'object') {
+        if (isType(x) !== 'object') {
             return false;
         }
 
@@ -392,7 +407,7 @@
             return false;
         }
 
-        if (Type(x['[[PromiseStatus]]']) === 'undefined') {
+        if (isType(x['[[PromiseStatus]]']) === 'undefined') {
             return false;
         }
         return true;
@@ -408,7 +423,7 @@
     // 25.4.1.8 UpdatePromiseFromPotentialThenable ( x, promiseCapability )
     function UpdatePromiseFromPotentialThenable(x, capability) {
         var then, rejectResult, thenCallResult;
-        if (Type(x) !== 'object') {
+        if (isType(x) !== 'object') {
             return 'not a thenable';
         }
 
@@ -444,7 +459,7 @@
             return promiseCapability['[[Reject]]'].call(undefined, e);
         }
         if (SameValue(handlerResult, promiseCapability['[[Promise]]'])) {
-            selfResolutionError = TypeError();
+            selfResolutionError = new TypeError();
             return promiseCapability['[[Reject]]']
                 .call(undefined, selfResolutionError);
         }
@@ -461,13 +476,13 @@
     function Promise(executor) {
         var promise = this;
         if (!IsCallable(executor)) {
-            throw TypeError('Invalid executor');
+            throw new TypeError('Invalid executor');
         }
-        if (Type(promise) !== 'object') {
-            throw TypeError('Invalid promise');
+        if (isType(promise) !== 'object') {
+            throw new TypeError('Invalid promise');
         }
-        if (Type(promise['[[PromiseStatus]]']) !== 'undefined') {
-            throw TypeError();
+        if (isType(promise['[[PromiseStatus]]']) !== 'undefined') {
+            throw new TypeError();
         }
         defineInternal(this, '[[PromiseConstructor]]', Promise);
         return InitializePromise(promise, executor);
@@ -476,11 +491,11 @@
     // 25.4.3.1.1 InitializePromise( promise, executor )
     function InitializePromise(promise, executor) {
         var resolve, reject, completion, status;
-        if (Type(promise['[[PromiseStatus]]']) !== 'undefined') {
-            throw TypeError();
+        if (isType(promise['[[PromiseStatus]]']) !== 'undefined') {
+            throw new TypeError();
         }
         if (!IsCallable(executor)) {
-            throw TypeError();
+            throw new TypeError();
         }
         defineInternal(promise, '[[PromiseStatus]]', 'unresolved');
         defineInternal(promise, '[[PromiseResolveReactions]]', []);
@@ -665,7 +680,7 @@
     Promise.prototype.then = function(onFulfilled, onRejected) {
         var promise = this;
         if (!IsPromise(promise)) {
-            throw TypeError('not a promise');
+            throw new TypeError('not a promise');
         }
 
         var C = promise.constructor,
