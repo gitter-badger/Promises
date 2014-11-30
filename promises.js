@@ -3,6 +3,7 @@
 
     'use strict';
 
+
     // *Only* use this polyfill if not native supported by browser
 
     if (!'Promise' in global &&
@@ -17,6 +18,8 @@
             });
             return typeof resolve !== 'function';
         }())) {
+
+        // *Only* use this polyfill if not native supported by browser
 
         var
             isArray = Array.isArray,
@@ -37,7 +40,7 @@
                 return obj instanceof Promise;
             },
 
-            isPromiseLike = function(obj) {
+            isThenable = function(obj) {
                 return obj && typeof obj.then === 'function';
             },
 
@@ -53,7 +56,7 @@
 
                 function interimOnFulfilled(value) {
 
-                    if (isPromiseLike(value)) {
+                    if (isThenable(value)) {
 
                         toPromise(value).then(interimOnFulfilled, interimOnRejected);
 
@@ -64,7 +67,7 @@
 
                 function interimOnRejected(reason) {
 
-                    if (isPromiseLike(reason)) {
+                    if (isThenable(reason)) {
 
                         toPromise(reason).then(interimOnFulfilled, interimOnRejected);
 
@@ -77,20 +80,26 @@
                 toPromise(thenable).then(interimOnFulfilled, interimOnRejected);
             },
 
-            Promise = function(resolver) {
+            // 25.4.3.1 Promise(executor)
+
+            Promise = function(executor) {
+
                 this.fulfilled = false;
                 this.rejected = false;
                 this.value = undefined;
                 this.reason = undefined;
-                this.state = undefined;
+                this.msg = undefined;
+                this.state = 0;
+                this.done = false;
+                this.chain = [];
                 this.subscribers = [];
                 this.onFulfilled = [];
                 this.onRejected = [];
 
                 // Make sure this is not an empty function
 
-                if (noop !== resolver) {
-                    this.resolve(resolver);
+                if (noop !== executor) {
+                    this.resolve(executor);
                 }
             },
 
@@ -109,35 +118,35 @@
                 });
             };
 
-
-        Promise.resolve = function(value) {
-            if (isPromiseLike(value)) {
-                return toPromise(value);
+        // 25.4.4.6 Promise.resolve(x)
+        Promise.resolve = function(x) {
+            if (isThenable(x)) {
+                return toPromise(x);
             }
             return new Promise(function(resolve) {
-                resolve(value);
+                resolve(x);
             });
         };
-
-        Promise.reject = function(reason) {
+        // 25.4.4.5 Promise.reject(r)
+        Promise.reject = function(r) {
             return new Promise(function(resolve, reject) {
-                reject(reason);
+                reject(r);
             });
         };
-
-        Promise.race = function(values) {
+        // 25.4.4.4 Promise.race(iterable)
+        Promise.race = function(iterable) {
             return new Promise(function(resolve, reject) {
 
-                if (!isArray(values)) {
+                if (!isArray(iterable)) {
                     reject(new TypeError('You must pass an array to race.'));
                 } else {
                     var value,
-                        length = values.length,
+                        length = iterable.length,
                         i = 0;
                     while (i < length) {
-                        value = values[i];
+                        value = iterable[i];
 
-                        if (isPromiseLike(value)) {
+                        if (isThenable(value)) {
                             dive(value, resolve, reject);
                         } else {
                             resolve(value);
@@ -147,27 +156,27 @@
                 }
             });
         };
-
-        Promise.all = function(values) {
+        // 25.4.5.1 Promise.prototype.catch(onRejected)
+        Promise.all = function(onRejected) {
             return new Promise(function(resolve, reject) {
                 var thenables = 0,
                     fulfilled = 0,
                     value,
-                    length = values.length,
+                    length = onRejected.length,
                     i = 0;
-                values = values.slice(0);
+                values = onRejected.slice(0);
                 while (i < length) {
-                    value = values[i];
-                    if (isPromiseLike(value)) {
+                    value = onRejected[i];
+                    if (isThenable(value)) {
                         thenables++;
                         dive(
                             value,
                             function(index) {
                                 return function(value) {
-                                    values[index] = value;
+                                    onRejected[index] = value;
                                     fulfilled++;
                                     if (fulfilled == thenables) {
-                                        resolve(values);
+                                        resolve(onRejected);
                                     }
                                 };
                             }(i),
@@ -175,12 +184,12 @@
                         );
                     } else {
                         //[1, , 3] → [1, undefined, 3]
-                        values[i] = value;
+                        onRejected[i] = value;
                     }
                     i++;
                 }
                 if (!thenables) {
-                    resolve(values);
+                    resolve(onRejected);
                 }
             });
         };
@@ -260,7 +269,7 @@
                     };
                 }
 
-                return new Promise(function(resolve, reject) {
+                return new this.constructor(function(resolve, reject) {
 
                     function asyncOnFulfilled() {
                         window.setImmediate(function() {
@@ -271,7 +280,7 @@
                                 reject(error);
                                 return;
                             }
-                            if (isPromiseLike(value)) {
+                            if (isThenable(value)) {
                                 toPromise(value).then(resolve, reject);
                             } else {
                                 resolve(value);
@@ -288,7 +297,7 @@
                                 reject(error);
                                 return;
                             }
-                            if (isPromiseLike(reason)) {
+                            if (isThenable(reason)) {
                                 toPromise(reason).then(resolve, reject);
                             } else {
                                 resolve(reason);
@@ -306,8 +315,10 @@
                 });
             },
 
+            // 25.4.5.1 Promise.prototype.catch(onRejected)
+
             'catch': function(onRejected) {
-                return this.then(null, onRejected);
+                return this.then(undefined, onRejected);
             }
         };
 
