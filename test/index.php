@@ -14,9 +14,22 @@
 
 <button onClick="testPromise();"> Click for testing!</button> 
 
+<button id="clear"> clearImmediate!</button> 
+
 <div id="log"></div>
 
 <script type="text/javascript">
+
+
+var immediateID = setImmediate(function () {
+  // Run some code
+  alert("I'm a working setImmediate!!")
+});
+
+document.getElementById("clear").addEventListener('click', function () {
+  clearImmediate(immediateID);
+}, false);
+
 
     
 

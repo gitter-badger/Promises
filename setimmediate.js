@@ -1,65 +1,125 @@
 // ECMA-6 - setImmediate polyfill
-window.setImmediate || function() {
-    'use strict';
+// Note! This polyfill are for hAzzleJS, and only #IE9+ are supported
+// Node.js 0.9+ & IE10+ has setImmediate
+typeof window.setImmediate === 'function' &&
+    typeof window.clearImmediate === 'function' ||
+    (function(global, undefined) {
 
-    var uid = 0,
-        storage = {},
-        firstCall = true,
-        slice = Array.prototype.slice,
-        message = 'setImmediatePolyfillMessage',
+        'use strict';
 
-        fastApply = function(args) {
-            var func = args[0],
-                len = args.length;
+        var uid = 1, // Spec says greater than zero
+            queue = {},
+            currentlyRunningATask = false,
+            slice = Array.prototype.slice,
+            setImmediate;
 
-            if (len === 1) {
-                return func();
-            }
+        function addFromSetImmediateArguments(args) {
+            queue[uid] = partiallyApplied.apply(undefined, args);
+            return uid++;
+        }
 
-            if (len === 2) {
-                return func(args[1]);
-            }
+        // This function accepts the same arguments as setImmediate, but
+        // returns a function that requires no arguments.
+        function partiallyApplied(handler) {
+            var args = slice.call(arguments, 1);
+            return function() {
+                if (typeof handler === 'function') {
+                    handler.apply(undefined, args);
+                } else {
+                    (new Function('' + handler))();
+                }
+            };
+        }
 
-            if (len === 3) {
-                return func(args[1], args[2]);
-            }
-            return func.apply(window, slice.call(args, 1));
-        },
+        function run(handle) {
 
-        callback = function(event) {
-            var key = event.data,
-                data;
-
-            // We can't gamble here and think hAzzle are loaded beforehand, and
-            // use ECMA-7 contains(), so we are using native indexOf
-
-            if (typeof key === 'string' && 0 == key.indexOf(message)) {
-                data = storage[key];
-                if (data) {
-                    delete storage[key];
-                    fastApply(data);
+            if (currentlyRunningATask) {
+                setTimeout(partiallyApplied(run, handle), 0);
+            } else {
+                var task = queue[handle];
+                if (task) {
+                    currentlyRunningATask = true;
+                    try {
+                        task();
+                    } finally {
+                        clearImmediate(handle);
+                        currentlyRunningATask = false;
+                    }
                 }
             }
         }
-    
-    //# EXPOSE TO THE GLOBAL SCOPE
- 
-    window.setImmediate = function setImmediate() {
-        var id = uid++,
-            key = message + id;
-            
-        storage[key] = arguments;
-        
-        if (firstCall) {
-            firstCall = false;
-            window.addEventListener('message', callback);
+
+        function clearImmediate(handle) {
+            delete queue[handle];
         }
-        window.postMessage(key, '*');
-        return id;
-    };
 
-    window.clearImmediate = function clearImmediate(id) {
-        delete storage[message + id];
-    };
+        // Check if we can use post message
 
-}();
+        function canUsePostMessage() {
+
+            var postMessage = global.postMessage,
+                importScripts = global.importScripts,
+                postMessageIsAsynchronous,
+                oldOnMessage;
+
+            // Modern browsers, skip implementation for WebWorkers
+            // IE8 has postMessage, but it's sync & typeof its postMessage is object
+
+            if (postMessage && !importScripts) {
+
+                postMessageIsAsynchronous = true;
+
+                oldOnMessage = global.onmessage;
+
+                global.onmessage = function() {
+                    postMessageIsAsynchronous = false;
+                };
+
+                global.postMessage('', '*');
+                global.onmessage = oldOnMessage;
+                return postMessageIsAsynchronous;
+            }
+        }
+
+        // If we can use post message, go on...
+
+        if (canUsePostMessage()) {
+            // Non-IE10+ browsers
+            var messagePrefix = 'setImmediate$' + Math.random() + '$';
+
+            global.addEventListener('message', function(event) {
+
+                if (event.source === global &&
+                    typeof event.data === 'string' &&
+                    event.data.indexOf(messagePrefix) === 0) {
+                    run(+event.data.slice(messagePrefix.length));
+                }
+            }, false);
+
+            setImmediate = function() {
+                var handle = addFromSetImmediateArguments(arguments);
+                global.postMessage(messagePrefix + handle, '*');
+                return handle;
+            };
+
+            // Web workers
+
+        } else if (global.MessageChannel) {
+
+            var channel = new MessageChannel();
+
+            channel.port1.onmessage = function(event) {
+                var handle = event.data;
+                run(handle);
+            };
+
+            setImmediate = function() {
+                var handle = addFromSetImmediateArguments(arguments);
+                channel.port2.postMessage(handle);
+                return handle;
+            };
+        }
+        // EXPOSE
+        window.setImmediate = setImmediate;
+        window.clearImmediate = clearImmediate;
+    }(this));
