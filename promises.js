@@ -250,7 +250,7 @@
             return CreateIterResultObject(index, false);
         }
         if (itemKind.indexOf('value') === -1) {
-            throw new TypeError('not found');
+            throw new TypeError('invalid value');
         }
         return CreateIterResultObject(elementValue, false);
 
@@ -381,10 +381,10 @@
         return function F(resolve, reject) {
             var capability = F['[[Capability]]'];
             if (isType(capability['[[Resolve]]']) !== 'undefined') {
-                throw new TypeError('Invalid resolver');
+                throw new TypeError();
             }
             if (isType(capability['[[Reject]]']) !== 'undefined') {
-                throw new TypeError('Invalid rejection');
+                throw new TypeError();
             }
             defineInternal(capability, '[[Resolve]]', resolve);
             defineInternal(capability, '[[Reject]]', reject);
@@ -416,14 +416,13 @@
 
     // 25.4.1.8 UpdatePromiseFromPotentialThenable ( x, capability )
     function UpdatePromiseFromPotentialThenable(x, capability) {
-        
+        var then, rejectResult, thenCallResult;
         if (isType(x) !== 'object') {
             return 'not a thenable';
         }
 
-       var then, rejectResult, thenCallResult,
-           resolve = capability['[[Resolve]]'],
-           reject = capability['[[Reject]]'];
+        var resolve = capability['[[Resolve]]'],
+            reject = capability['[[Reject]]'];
 
         try {
             then = x.then; // only one invocation of accessor
@@ -491,7 +490,6 @@
         }
         if (!IsCallable(executor)) {
             throw new TypeError('Invalid executor');
-
         }
         defineInternal(promise, '[[PromiseStatus]]', 'unresolved');
         defineInternal(promise, '[[PromiseResolveReactions]]', []);
@@ -731,7 +729,7 @@
                 fulfillmentHandler = F['[[FulfillmentHandler]]'],
                 rejectionHandler = F['[[RejectionHandler]]'],
                 selfResolutionError, C, 
-                capability = PromiseCapability(C), 
+                capability, 
                 updateResult;
        
             if (SameValue(x, promise)) {
@@ -741,6 +739,11 @@
        
             C = promise['[[PromiseConstructor]]'];
        
+            try {
+                capability = PromiseCapability(C);
+            } catch (e) {
+                return e;
+            }
             try {
                 updateResult = UpdatePromiseFromPotentialThenable(x,
                     capability
