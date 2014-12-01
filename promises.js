@@ -12,13 +12,20 @@
 
     'use strict';
 
-    var $iterator$, ArrayIteratorPrototype,
-        Symbol = global.Symbol || {};
+    // Chrome's native Promise has extra methods that it shouldn't have. Let's remove them.
+    if (global.Promise) {
+        delete global.Promise.accept;
+        delete global.Promise.defer;
+        delete global.Promise.prototype.chain;
+    }
 
     // don't trample native promises if they exist
     if ('Promise' in global && typeof global.Promise.all === 'function') {
         return;
     }
+
+    var $iterator$, ArrayIteratorPrototype,
+        Symbol = global.Symbol || {};
 
     // set a value as non-configurable and non-enumerable
     function defineInternal(obj, key, val) {
@@ -733,17 +740,17 @@
             var promise = F['[[Promise]]'],
                 fulfillmentHandler = F['[[FulfillmentHandler]]'],
                 rejectionHandler = F['[[RejectionHandler]]'],
-                selfResolutionError, C, 
-                capability, 
+                selfResolutionError, C,
+                capability,
                 updateResult;
-       
+
             if (SameValue(x, promise)) {
                 selfResolutionError = TypeError('Invalid promise');
                 return rejectionHandler.call(undefined, selfResolutionError);
             }
-       
+
             C = promise['[[PromiseConstructor]]'];
-       
+
             try {
                 capability = PromiseCapability(C);
             } catch (e) {
